@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <title>Gigi's GM/GN Gallery</title>
+
+    <link
+        rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/@exampledev/new.css@1.1.2/new.min.css"
+    />
+
+    <style>
+        body {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .status {
+            padding: 10px;
+            background: #efefef;
+            border-radius: 5px;
+            font-size: 0.9rem;
+            margin-bottom: 20px;
+        }
+
+        .gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 20px;
+        }
+
+        .card {
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            padding: 15px;
+            background: white;
+        }
+
+        .card img {
+            width: 100%;
+            height: 250px;
+            object-fit: cover;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            cursor: pointer;
+        }
+
+        .card-text {
+            font-size: 0.95rem;
+            margin-bottom: 10px;
+            word-break: break-word;
+        }
+
+        .card-date {
+            font-size: 0.8rem;
+            color: #666;
+        }
+
+        .loading {
+            text-align: center;
+            font-weight: bold;
+            font-size: 1.2rem;
+        }
+    </style>
+</head>
+
+<body>
+
+<header>
+    <h1>🌅 Gigi's GM & GN Gallery</h1>
+    <p>Daily GM/GN images from Nostr</p>
+</header>
+
+<div id="status" class="status">
+    Connecting to relays...
+</div>
+
+<main id="gallery" class="gallery">
+    <div class="loading">Loading posts...</div>
+</main>
+
+<script>
+
+window.addEventListener("DOMContentLoaded", () => {
+
+    // Gigi pubkey
+    const HEX_PUBKEY =
+        "c1bc4703a4da3e9e19d701e7ff8fa64ef1df149ea63a033c5e8486950e3fd79f";
+
+    // Working relays
+    const RELAYS = [
+        "wss://relay.primal.net",
+        "wss://nos.lol",
+        "wss://relay.damus.io"
+    ];
+
+    // Image URL regex
+    const IMAGE_REGEX =
+        /(https?:\/\/[^\s]+\.(?:png|jpg|jpeg|gif|webp|avif))/gi;
+
+    const galleryEl = document.getElementById("gallery");
+    const statusEl = document.getElementById("status");
+
+    const displayedEvents = new Set();
+    const displayedImages = new Set();
+
+    function formatDate(timestamp) {
+        return new Date(timestamp * 1000).toLocaleString(undefined, {
+            weekday: "short",
+            month: "short",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit"
+        });
+    }
+
+    // Better GM/GN detection
+    function isGMGNPost(content) {
+
+        const text = content.toLowerCase();
+
+        return (
+            /\bgm\b/.test(text) ||
+            /\bgn\b/.test(text) ||
+            /\bgood morning\b/.test(text) ||
+            /\bgood night\b/.test(text) ||
+            text.includes("🌅") ||
+            text.includes("🌄") ||
+            text.includes("🌌")
+        );
+    }
+
+    // Extract images from content and tags
+    function extractImages(event) {
+
+        let images = [];
+
+        // From content
+        const contentMatches = event.content.match(IMAGE_REGEX);
+
+        if (contentMatches) {
+            images.push(...contentMatches);
+        }
+
+        // From tags
+        if (event.tags && Array.isArray(event.tags)) {
+
+            event.tags.forEach(tag => {
+
+                // imeta tags
+                if (tag[0] === "imeta") {
+
+                    tag.forEach(part => {
+
+                        const match = part.match(
+                            /(https?:\/\/[^\s]+\.(?:png|jpg|jpeg|gif|webp|avif))/i
+                        );
+
+                        if (match) {
+                            images.push(match[1]);
+                        }
+                    });
+                }
+
+                // image tags
+                if (
+                    tag[0] === "image" &&
+                    typeof tag[1] === "string"
+                ) {
+                    images.push(tag[1]);
+                }
+            });
+        }
+
+        // remove duplicates
+        return [...new Set(images)];
+    }
+
+    function createCard(imgUrl, text, createdAt) {
+
+        const card = document.createElement("div");
+
+        card.className = "card";
+
+        card.innerHTML = `
+            <a href="${imgUrl}" target="_blank">
+                <img
+                    src="${imgUrl}"
+                    alt="GM/GN image"
+                    loading="lazy"
+                    onerror="this.src='https://placehold.co/400x300?text=Image+Failed'"
+                />
+            </a>
+
+            <div class="card-text">
+                ${text}
+            </div>
+
+            <div class="card-date">
+                ${formatDate(createdAt)}
+            </div>
+        `;
+
+        galleryEl.appendChild(card);
+    }
+
+    function processEvent(event) {
+
+        if (!event) return;
+
+        // prevent duplicate events
+        if (displayedEvents.has(event.id)) {
+            return;
+        }
+
+        displayedEvents.add(event.id);
+
+        const content = event.content || "";
+
+        // only GM/GN posts
+        if (!isGMGNPost(content)) {
+            return;
+        }
+
+        // extract images
+        const images = extractImages(event);
+
+        if (!images.length) {
+            return;
+        }
+
+        // remove loading message
+        if (galleryEl.querySelector(".loading")) {
+            galleryEl.innerHTML = "";
+        }
+
+        let cleanText = content
+            .replace(IMAGE_REGEX, "")
+            .trim();
+
+        if (!cleanText) {
+            cleanText = "🌅";
+        }
+
+        images.forEach(img => {
+
+            // prevent duplicate images
+            if (displayedImages.has(img)) {
+                return;
+            }
+
+            displayedImages.add(img);
+
+            createCard(
+                img,
+                cleanText,
+                event.created_at
+            );
+        });
+    }
+
+    let connectedCount = 0;
+
+    RELAYS.forEach(relayUrl => {
+
+        try {
+
+            const ws = new WebSocket(relayUrl);
+
+            ws.onopen = () => {
+
+                connectedCount++;
+
+                statusEl.innerText =
+                    `Connected to ${connectedCount}/${RELAYS.length} relays`;
+
+                const subId =
+                    "gigi_" + Math.random().toString(36).slice(2);
+
+                ws.send(JSON.stringify([
+                    "REQ",
+                    subId,
+                    {
+                        authors: [HEX_PUBKEY],
+                        kinds: [1],
+                        limit: 1000
+                    }
+                ]));
+            };
+
+            ws.onmessage = (e) => {
+
+                try {
+
+                    const data = JSON.parse(e.data);
+
+                    if (data[0] === "EVENT") {
+                        processEvent(data[2]);
+                    }
+
+                    if (data[0] === "EOSE") {
+
+                        statusEl.innerText =
+                            `Finished loading from ${connectedCount} relays`;
+                    }
+
+                } catch (err) {
+                    console.error("Message parse error:", err);
+                }
+            };
+
+            ws.onerror = (err) => {
+
+                console.error(
+                    "Relay error:",
+                    relayUrl,
+                    err
+                );
+            };
+
+            ws.onclose = () => {
+
+                console.log(
+                    "Closed relay:",
+                    relayUrl
+                );
+            };
+
+        } catch (err) {
+
+            console.error(
+                "WebSocket init failed:",
+                relayUrl,
+                err
+            );
+        }
+    });
+
+    // Empty state
+    setTimeout(() => {
+
+        if (displayedImages.size === 0) {
+
+            galleryEl.innerHTML = `
+                <p>
+                    No GM/GN image posts found.
+                </p>
+            `;
+        }
+
+    }, 10000);
+
+});
+
+</script>
+
+</body>
+</html>
