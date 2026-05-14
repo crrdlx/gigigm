@@ -91,11 +91,11 @@
 
 window.addEventListener("DOMContentLoaded", () => {
 
-    // Gigi pubkey
+    // Correct Gigi pubkey
     const HEX_PUBKEY =
-        "c1bc4703a4da3e9e19d701e7ff8fa64ef1df149ea63a033c5e8486950e3fd79f";
+        "6e468422dfb74a5738702a8823b9b28168abab8655faacb6853cd0ee15deee93";
 
-    // Working relays
+    // Reliable relays
     const RELAYS = [
         "wss://relay.primal.net",
         "wss://nos.lol",
@@ -113,6 +113,7 @@ window.addEventListener("DOMContentLoaded", () => {
     const displayedImages = new Set();
 
     function formatDate(timestamp) {
+
         return new Date(timestamp * 1000).toLocaleString(undefined, {
             weekday: "short",
             month: "short",
@@ -122,7 +123,7 @@ window.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    // Better GM/GN detection
+    // Detect GM/GN posts
     function isGMGNPost(content) {
 
         const text = content.toLowerCase();
@@ -138,19 +139,19 @@ window.addEventListener("DOMContentLoaded", () => {
         );
     }
 
-    // Extract images from content and tags
+    // Extract image URLs
     function extractImages(event) {
 
         let images = [];
 
-        // From content
+        // Images from content
         const contentMatches = event.content.match(IMAGE_REGEX);
 
         if (contentMatches) {
             images.push(...contentMatches);
         }
 
-        // From tags
+        // Images from tags
         if (event.tags && Array.isArray(event.tags)) {
 
             event.tags.forEach(tag => {
@@ -177,10 +178,24 @@ window.addEventListener("DOMContentLoaded", () => {
                 ) {
                     images.push(tag[1]);
                 }
+
+                // r tags
+                if (
+                    tag[0] === "r" &&
+                    typeof tag[1] === "string"
+                ) {
+
+                    if (
+                        /\.(png|jpg|jpeg|gif|webp|avif)$/i.test(tag[1])
+                    ) {
+                        images.push(tag[1]);
+                    }
+                }
+
             });
         }
 
-        // remove duplicates
+        // Deduplicate
         return [...new Set(images)];
     }
 
@@ -216,7 +231,10 @@ window.addEventListener("DOMContentLoaded", () => {
 
         if (!event) return;
 
-        // prevent duplicate events
+        // Debug
+        console.log("EVENT:", event);
+
+        // Prevent duplicate events
         if (displayedEvents.has(event.id)) {
             return;
         }
@@ -225,19 +243,23 @@ window.addEventListener("DOMContentLoaded", () => {
 
         const content = event.content || "";
 
-        // only GM/GN posts
+        console.log("CONTENT:", content);
+
+        // Must contain GM/GN
         if (!isGMGNPost(content)) {
             return;
         }
 
-        // extract images
+        // Extract images
         const images = extractImages(event);
+
+        console.log("IMAGES:", images);
 
         if (!images.length) {
             return;
         }
 
-        // remove loading message
+        // Remove loading message
         if (galleryEl.querySelector(".loading")) {
             galleryEl.innerHTML = "";
         }
@@ -252,7 +274,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
         images.forEach(img => {
 
-            // prevent duplicate images
+            // Prevent duplicate images
             if (displayedImages.has(img)) {
                 return;
             }
@@ -281,6 +303,8 @@ window.addEventListener("DOMContentLoaded", () => {
 
                 statusEl.innerText =
                     `Connected to ${connectedCount}/${RELAYS.length} relays`;
+
+                console.log("CONNECTED:", relayUrl);
 
                 const subId =
                     "gigi_" + Math.random().toString(36).slice(2);
@@ -313,7 +337,11 @@ window.addEventListener("DOMContentLoaded", () => {
                     }
 
                 } catch (err) {
-                    console.error("Message parse error:", err);
+
+                    console.error(
+                        "Message parse error:",
+                        err
+                    );
                 }
             };
 
